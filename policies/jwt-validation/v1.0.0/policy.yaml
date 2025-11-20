@@ -1,0 +1,236 @@
+name: jwtValidation
+version: v1.0.0
+description: |
+  JWT (JSON Web Token) authentication and validation policy.
+  Extracts JWT from headers/query/cookies, validates signature and claims,
+  and maps claims to request metadata for downstream policies.
+
+author: Policy Engine Team
+license: MIT
+terms: []
+# Header-only policy - does not require body access
+requiresRequestBody: false
+requiresResponseBody: false
+
+# Policy executes on request phase only
+executionPhases:
+  - request
+
+parameters:
+  # ======== Token Extraction ========
+  - name: header
+    type: string
+    required: false
+    default: "Authorization"
+    description: |
+      HTTP header name to read JWT token from.
+    validation:
+      minLength: 1
+      maxLength: 256
+
+  - name: prefix
+    type: string
+    required: false
+    default: "Bearer "
+    description: |
+      Prefix to remove from token before decoding (e.g., "Bearer ").
+      Set to empty string if no prefix expected.
+
+  - name: queryParam
+    type: string
+    required: false
+    description: |
+      Query parameter name to extract JWT from (alternative to header).
+
+  - name: cookieName
+    type: string
+    required: false
+    description: |
+      Cookie name to extract JWT from (alternative to header).
+
+  # ======== Signature & Key Material ========
+  - name: jwksUrl
+    type: string
+    required: false
+    description: |
+      JWKS (JSON Web Key Set) URL for fetching public keys.
+      Used for dynamic key rotation.
+    validation:
+      pattern: '^https?://.+'
+
+  - name: jwksRefreshInterval
+    type: string
+    required: false
+    default: "5m"
+    description: |
+      How often to refresh JWKS cache (e.g., "5m", "1h").
+
+  - name: certificate
+    type: string
+    required: false
+    description: |
+      Inline PEM certificate for signature verification.
+      Alternative to JWKS URL.
+
+  - name: publicKey
+    type: string
+    required: false
+    description: |
+      Inline PEM RSA/EC public key for signature verification.
+      Alternative to JWKS URL.
+
+  - name: allowedAlgorithms
+    type: array
+    required: false
+    default:
+      - RS256
+      - ES256
+    description: |
+      List of allowed JWT signing algorithms (e.g., RS256, ES256, HS256).
+    validation:
+      items:
+        type: string
+        enum:
+          - HS256
+          - HS384
+          - HS512
+          - RS256
+          - RS384
+          - RS512
+          - ES256
+          - ES384
+          - ES512
+          - PS256
+          - PS384
+          - PS512
+
+  # ======== Core JWT Claims Validation ========
+  - name: issuer
+    type: string
+    required: false
+    description: |
+      Expected issuer (iss claim) value.
+      Token will be rejected if issuer doesn't match.
+
+  - name: audience
+    type: array
+    required: false
+    description: |
+      List of valid audience (aud claim) values.
+      Token must contain at least one matching audience.
+    validation:
+      items:
+        type: string
+
+  - name: subject
+    type: string
+    required: false
+    description: |
+      Expected subject (sub claim) value for exact match.
+
+  - name: tenant
+    type: string
+    required: false
+    description: |
+      Expected tenant claim value for multi-tenancy scenarios.
+
+  # ======== Scope / Permission Validation ========
+  - name: scopeClaim
+    type: string
+    required: false
+    default: "scope"
+    description: |
+      Name of the claim containing scopes/permissions.
+
+  - name: requiredScopes
+    type: array
+    required: false
+    description: |
+      List of scopes that must ALL be present in the token.
+    validation:
+      items:
+        type: string
+
+  - name: optionalScopes
+    type: array
+    required: false
+    description: |
+      List of scopes where at least ONE must be present.
+    validation:
+      items:
+        type: string
+
+  # ======== Exp / NBF / Time Validations ========
+  - name: validateExpiry
+    type: boolean
+    required: false
+    default: true
+    description: |
+      Whether to validate token expiration (exp claim).
+
+  - name: validateNotBefore
+    type: boolean
+    required: false
+    default: true
+    description: |
+      Whether to validate not-before time (nbf claim).
+
+  - name: clockSkewSeconds
+    type: integer
+    required: false
+    default: 300
+    description: |
+      Allowed clock skew in seconds (default: 5 minutes).
+      Accounts for time differences between systems.
+    validation:
+      minimum: 0
+      maximum: 3600
+
+  # ======== Claim Mapping to Metadata ========
+  - name: mapClaimsToMetadata
+    type: object
+    required: false
+    description: |
+      Configuration for mapping JWT claims to request metadata.
+    properties:
+      enabled:
+        type: boolean
+        default: true
+      prefix:
+        type: string
+        default: "jwt."
+        description: "Prefix for metadata keys (e.g., 'jwt.sub', 'jwt.email')"
+      include:
+        type: array
+        description: "List of claim names to include in metadata"
+        items:
+          type: string
+      exclude:
+        type: array
+        description: "List of claim names to exclude from metadata"
+        items:
+          type: string
+
+  # ======== Token Caching ========
+  - name: cache
+    type: object
+    required: false
+    description: |
+      Token validation result caching configuration.
+    properties:
+      enabled:
+        type: boolean
+        default: true
+      ttl:
+        type: string
+        default: "5m"
+        description: "Cache time-to-live (e.g., '5m', '1h')"
+
+  # ======== Failure Behavior ========
+  - name: mandatory
+    type: boolean
+    required: false
+    default: true
+    description: |
+      If true, reject request when token is missing or invalid.
+      If false, allow request to proceed but don't set authenticated metadata.
